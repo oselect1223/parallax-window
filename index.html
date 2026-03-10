@@ -215,9 +215,10 @@ Promise.all([
 
   function onGyro(e) {
     if (e.gamma == null) return;
+    // 감도 증폭: ±20도 범위를 0~1로 매핑 (기존 ±45도 → 더 작은 범위로 = 더 민감)
     target.set(
-      THREE.MathUtils.clamp((e.gamma + 45) / 90, 0, 1),
-      THREE.MathUtils.clamp((e.beta  + 45) / 90, 0, 1)
+      THREE.MathUtils.clamp((e.gamma + 20) / 40, 0, 1),
+      THREE.MathUtils.clamp((e.beta  + 20) / 40, 0, 1)
     );
     hint.classList.add('hidden');
   }
