@@ -42,6 +42,27 @@
     white-space: nowrap;
   }
   #hint.hidden { opacity: 0; }
+  #gyro-btn {
+    position: fixed;
+    bottom: 56px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(255,255,255,0.12);
+    color: rgba(255,255,255,0.85);
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 999px;
+    padding: 10px 26px;
+    font-size: 13px;
+    letter-spacing: 0.1em;
+    font-family: Georgia, serif;
+    cursor: pointer;
+    z-index: 30;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    transition: opacity 0.6s, background 0.2s;
+    white-space: nowrap;
+  }
+  #gyro-btn:active { background: rgba(255,255,255,0.28); }
+  #gyro-btn.hidden { opacity: 0; pointer-events: none; }
   #loading {
     position: fixed; inset: 0;
     background: #000;
@@ -63,6 +84,7 @@
   <img id="frame-overlay" src="frame.png" />
 </div>
 <div id="hint">터치하여 움직여보세요 · Move your mouse</div>
+<button id="gyro-btn">📐 기울여서 조작하기</button>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -187,29 +209,54 @@ Promise.all([
     hint.classList.add('hidden');
   }, { passive: false });
 
-  // 자이로 (iOS는 권한 요청 필요)
-  function enableGyro() {
-    if (typeof DeviceOrientationEvent !== 'undefined' &&
-        typeof DeviceOrientationEvent.requestPermission === 'function') {
-      DeviceOrientationEvent.requestPermission()
-        .then(state => {
-          if (state === 'granted') {
-            window.addEventListener('deviceorientation', onGyro);
-          }
-        }).catch(() => {});
-    } else {
-      window.addEventListener('deviceorientation', onGyro);
-    }
-  }
+  // 자이로 (iOS는 버튼 탭으로 권한 요청 필요)
+  const gyroBtn = document.getElementById('gyro-btn');
+  let gyroActive = false;
+
   function onGyro(e) {
     if (e.gamma == null) return;
     target.set(
       THREE.MathUtils.clamp((e.gamma + 45) / 90, 0, 1),
       THREE.MathUtils.clamp((e.beta  + 45) / 90, 0, 1)
     );
+    hint.classList.add('hidden');
   }
-  // 첫 터치 시 자이로 권한 요청
-  window.addEventListener('touchstart', () => enableGyro(), { once: true });
+
+  function enableGyro() {
+    if (typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
+      // iOS 13+ 권한 요청
+      DeviceOrientationEvent.requestPermission()
+        .then(state => {
+          if (state === 'granted') {
+            window.addEventListener('deviceorientation', onGyro);
+            gyroBtn.textContent = '✅ 기울기 활성화됨';
+            setTimeout(() => gyroBtn.classList.add('hidden'), 1500);
+            gyroActive = true;
+          } else {
+            gyroBtn.textContent = '❌ 권한이 거부됐어요';
+            setTimeout(() => gyroBtn.classList.add('hidden'), 2000);
+          }
+        }).catch(() => {
+          gyroBtn.textContent = '❌ 오류가 발생했어요';
+          setTimeout(() => gyroBtn.classList.add('hidden'), 2000);
+        });
+    } else {
+      // Android / 구버전 - 권한 불필요
+      window.addEventListener('deviceorientation', onGyro);
+      gyroBtn.classList.add('hidden');
+      gyroActive = true;
+    }
+  }
+
+  gyroBtn.addEventListener('click', enableGyro);
+
+  // Android는 버튼 없이 자동 활성화
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission !== 'function') {
+    window.addEventListener('deviceorientation', onGyro);
+    gyroBtn.classList.add('hidden');
+  }
 
   // 렌더 루프
   (function tick() {
