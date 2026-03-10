@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>2.5D Parallax</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #000;
+    overflow: hidden;
+    touch-action: none;
+  }
+  #container {
+    position: relative;
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  canvas#c {
+    position: absolute;
+    display: block;
+  }
+  #frame-overlay {
+    position: absolute;
+    pointer-events: none;
+    z-index: 10;
+  }
+  #hint {
+    position: fixed;
+    bottom: 28px; left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.5);
+    font-size: 12px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 20;
+    transition: opacity 1.2s;
+    font-family: Georgia, serif;
+    white-space: nowrap;
+  }
+  #hint.hidden { opacity: 0; }
+  #loading {
+    position: fixed; inset: 0;
+    background: #000;
+    display: flex; align-items: center; justify-content: center;
+    color: rgba(255,255,255,0.4);
+    font-family: Georgia, serif;
+    font-size: 13px;
+    letter-spacing: 0.2em;
+    z-index: 50;
+    transition: opacity 0.8s;
+  }
+  #loading.hidden { opacity: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="loading">LOADING ...</div>
+<div id="container">
+  <canvas id="c"></canvas>
+  <img id="frame-overlay" src="frame.png" />
+</div>
+<div id="hint">터치하여 움직여보세요 · Move your mouse</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const IMG_W = 364, IMG_H = 909;
+
+// iOS Safari: WebGL context with explicit options
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({
+  canvas,
+  antialias: false,           // iOS에서 antialias 끄면 안정적
+  alpha: false,
+  powerPreference: 'default', // iOS에서 high-performance 피하기
+  preserveDrawingBuffer: false
+});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+const scene  = new THREE.Scene();
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 10);
+camera.position.z = 1;
+
+let mesh = null;
+
+function loadTexture(url) {
+  return new Promise((resolve, reject) => {
+    const loader = new THREE.TextureLoader();
+    loader.load(
+      url,
+      tex => {
+        tex.minFilter = THREE.LinearFilter; // iOS mipmap 이슈 방지
+        tex.magFilter = THREE.LinearFilter;
+        tex.generateMipmaps = false;
+        resolve(tex);
+      },
+      undefined,
+      err => reject(err)
+    );
+  });
+}
+
+Promise.all([
+  loadTexture('main.png'),
+  loadTexture('depth.png')
+]).then(([mainTex, depthTex]) => {
+
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTex:      { value: mainTex  },
+      uDepth:    { value: depthTex },
+      uMouse:    { value: new THREE.Vector2(0.5, 0.5) },
+      uStrength: { value: 0.025 }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      precision mediump float;
+      uniform sampler2D uTex;
+      uniform sampler2D uDepth;
+      uniform vec2 uMouse;
+      uniform float uStrength;
+      varying vec2 vUv;
+      void main() {
+        vec2 mouse = uMouse - 0.5;
+        float d = texture2D(uDepth, vUv).r;
+        vec2 offset   = mouse * uStrength * d;
+        vec2 bgOffset = mouse * uStrength * 0.3 * (1.0 - d) * -1.0;
+        vec2 uv = clamp(vUv - offset - bgOffset, 0.001, 0.999);
+        gl_FragColor = texture2D(uTex, uv);
+      }
+    `
+  });
+
+  function resize() {
+    const W = window.innerWidth, H = window.innerHeight;
+    renderer.setSize(W, H);
+    const imgRatio = IMG_W / IMG_H, winRatio = W / H;
+    let pxW, pxH, planeW, planeH;
+    if (winRatio > imgRatio) {
+      pxH = H; pxW = H * imgRatio;
+      planeH = 2; planeW = 2 * imgRatio / winRatio;
+    } else {
+      pxW = W; pxH = W / imgRatio;
+      planeW = 2; planeH = 2 * winRatio / imgRatio;
+    }
+    document.getElementById('frame-overlay').style.width  = pxW + 'px';
+    document.getElementById('frame-overlay').style.height = pxH + 'px';
+    if (mesh) scene.remove(mesh);
+    mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(planeW, planeH, 128, 128), // iOS: 256→128 줄임
+      mat
+    );
+    scene.add(mesh);
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // 로딩 화면 숨기기
+  const loading = document.getElementById('loading');
+  loading.classList.add('hidden');
+  setTimeout(() => loading.style.display = 'none', 900);
+
+  // 인터랙션
+  const target  = new THREE.Vector2(0.5, 0.5);
+  const current = new THREE.Vector2(0.5, 0.5);
+  const hint    = document.getElementById('hint');
+
+  // 마우스
+  window.addEventListener('mousemove', e => {
+    target.set(e.clientX / window.innerWidth, 1 - e.clientY / window.innerHeight);
+    hint.classList.add('hidden');
+  });
+
+  // 터치 (iOS용)
+  window.addEventListener('touchmove', e => {
+    e.preventDefault();
+    const t = e.touches[0];
+    target.set(t.clientX / window.innerWidth, 1 - t.clientY / window.innerHeight);
+    hint.classList.add('hidden');
+  }, { passive: false });
+
+  // 자이로 (iOS는 권한 요청 필요)
+  function enableGyro() {
+    if (typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
+      DeviceOrientationEvent.requestPermission()
+        .then(state => {
+          if (state === 'granted') {
+            window.addEventListener('deviceorientation', onGyro);
+          }
+        }).catch(() => {});
+    } else {
+      window.addEventListener('deviceorientation', onGyro);
+    }
+  }
+  function onGyro(e) {
+    if (e.gamma == null) return;
+    target.set(
+      THREE.MathUtils.clamp((e.gamma + 45) / 90, 0, 1),
+      THREE.MathUtils.clamp((e.beta  + 45) / 90, 0, 1)
+    );
+  }
+  // 첫 터치 시 자이로 권한 요청
+  window.addEventListener('touchstart', () => enableGyro(), { once: true });
+
+  // 렌더 루프
+  (function tick() {
+    requestAnimationFrame(tick);
+    current.lerp(target, 0.06);
+    mat.uniforms.uMouse.value.copy(current);
+    renderer.render(scene, camera);
+  })();
+
+}).catch(err => {
+  console.error('Load error:', err);
+  document.getElementById('loading').textContent = 'Error: ' + err.message;
+});
+</script>
+</body>
+</html>
