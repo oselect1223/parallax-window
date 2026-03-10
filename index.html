@@ -201,11 +201,23 @@ Promise.all([
     hint.classList.add('hidden');
   });
 
-  // 터치 (iOS용)
+  // 터치 (iOS용) - 드래그 델타 방식으로 변경
+  let lastTouch = null;
+  window.addEventListener('touchstart', e => {
+    lastTouch = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }, { passive: true });
   window.addEventListener('touchmove', e => {
     e.preventDefault();
     const t = e.touches[0];
-    target.set(t.clientX / window.innerWidth, 1 - t.clientY / window.innerHeight);
+    if (lastTouch) {
+      const dx = (t.clientX - lastTouch.x) / window.innerWidth  * 4.0;
+      const dy = (t.clientY - lastTouch.y) / window.innerHeight * 4.0;
+      target.set(
+        THREE.MathUtils.clamp(target.x + dx, 0, 1),
+        THREE.MathUtils.clamp(target.y - dy, 0, 1)
+      );
+    }
+    lastTouch = { x: t.clientX, y: t.clientY };
     hint.classList.add('hidden');
   }, { passive: false });
 
@@ -215,10 +227,10 @@ Promise.all([
 
   function onGyro(e) {
     if (e.gamma == null) return;
-    // 감도 증폭: ±20도 범위를 0~1로 매핑 (기존 ±45도 → 더 작은 범위로 = 더 민감)
+    // ±15도 범위로 더 민감하게
     target.set(
-      THREE.MathUtils.clamp((e.gamma + 20) / 40, 0, 1),
-      THREE.MathUtils.clamp((e.beta  + 20) / 40, 0, 1)
+      THREE.MathUtils.clamp((e.gamma + 15) / 30, 0, 1),
+      THREE.MathUtils.clamp((e.beta  + 15) / 30, 0, 1)
     );
     hint.classList.add('hidden');
   }
