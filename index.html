@@ -81,7 +81,7 @@
 <div id="loading">LOADING ...</div>
 <div id="container">
   <canvas id="c"></canvas>
-  <img id="frame-overlay" src="frame.png" />
+  <img id="frame-overlay" src="./frame.png" />
 </div>
 <div id="hint">터치하여 움직여보세요 · Move your mouse</div>
 <button id="gyro-btn">📐 기울여서 조작하기</button>
@@ -125,8 +125,8 @@ function loadTexture(url) {
 }
 
 Promise.all([
-  loadTexture('main.png'),
-  loadTexture('depth.png')
+  loadTexture('./main.png'),
+  loadTexture('./depth.png')
 ]).then(([mainTex, depthTex]) => {
 
   const mat = new THREE.ShaderMaterial({
