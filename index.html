@@ -134,7 +134,7 @@ Promise.all([
       uTex:      { value: mainTex  },
       uDepth:    { value: depthTex },
       uMouse:    { value: new THREE.Vector2(0.5, 0.5) },
-      uStrength: { value: 0.025 }
+      uStrength: { value: 0.1 }
     },
     vertexShader: `
       varying vec2 vUv;
@@ -210,8 +210,8 @@ Promise.all([
     e.preventDefault();
     const t = e.touches[0];
     if (lastTouch) {
-      const dx = (t.clientX - lastTouch.x) / window.innerWidth  * 8.0; // 좌우 감도 2배
-      const dy = (t.clientY - lastTouch.y) / window.innerHeight * 4.0;
+      const dx = (t.clientX - lastTouch.x) / window.innerWidth  * 32.0; // 좌우 감도 2배
+      const dy = (t.clientY - lastTouch.y) / window.innerHeight * 16.0;
       target.set(
         THREE.MathUtils.clamp(target.x + dx, 0, 1),
         THREE.MathUtils.clamp(target.y - dy, 0, 1)
@@ -229,8 +229,8 @@ Promise.all([
     if (e.gamma == null) return;
     // 좌우(gamma) 더 민감하게, 상하(beta) 는 현재 유지
     target.set(
-      THREE.MathUtils.clamp((e.gamma + 10) / 20, 0, 1), // 좌우 ±10도
-      THREE.MathUtils.clamp((e.beta  + 15) / 30, 0, 1)  // 상하 ±15도
+      THREE.MathUtils.clamp((e.gamma + 2.5) / 5, 0, 1),   // 좌우 ±2.5도
+      THREE.MathUtils.clamp((e.beta  + 3.75) / 7.5, 0, 1) // 상하 ±3.75도
     );
     hint.classList.add('hidden');
   }
