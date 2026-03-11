@@ -90,13 +90,12 @@
 <script>
 const IMG_W = 364, IMG_H = 909;
 
-// iOS Safari: WebGL context with explicit options
 const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({
   canvas,
-  antialias: false,           // iOS에서 antialias 끄면 안정적
+  antialias: false,
   alpha: false,
-  powerPreference: 'default', // iOS에서 high-performance 피하기
+  powerPreference: 'default',
   preserveDrawingBuffer: false
 });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -113,7 +112,7 @@ function loadTexture(url) {
     loader.load(
       url,
       tex => {
-        tex.minFilter = THREE.LinearFilter; // iOS mipmap 이슈 방지
+        tex.minFilter = THREE.LinearFilter;
         tex.magFilter = THREE.LinearFilter;
         tex.generateMipmaps = false;
         resolve(tex);
@@ -134,7 +133,7 @@ Promise.all([
       uTex:      { value: mainTex  },
       uDepth:    { value: depthTex },
       uMouse:    { value: new THREE.Vector2(0.5, 0.5) },
-      uStrength: { value: 0.1 }
+      uStrength: { value: 0.05 } // 0.1에서 0.05로 시차 강도 감소
     },
     vertexShader: `
       varying vec2 vUv;
@@ -177,7 +176,7 @@ Promise.all([
     document.getElementById('frame-overlay').style.height = pxH + 'px';
     if (mesh) scene.remove(mesh);
     mesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(planeW, planeH, 128, 128), // iOS: 256→128 줄임
+      new THREE.PlaneGeometry(planeW, planeH, 128, 128),
       mat
     );
     scene.add(mesh);
@@ -185,23 +184,19 @@ Promise.all([
   resize();
   window.addEventListener('resize', resize);
 
-  // 로딩 화면 숨기기
   const loading = document.getElementById('loading');
   loading.classList.add('hidden');
   setTimeout(() => loading.style.display = 'none', 900);
 
-  // 인터랙션
   const target  = new THREE.Vector2(0.5, 0.5);
   const current = new THREE.Vector2(0.5, 0.5);
   const hint    = document.getElementById('hint');
 
-  // 마우스
   window.addEventListener('mousemove', e => {
     target.set(e.clientX / window.innerWidth, 1 - e.clientY / window.innerHeight);
     hint.classList.add('hidden');
   });
 
-  // 터치 (iOS용) - 드래그 델타 방식으로 변경
   let lastTouch = null;
   window.addEventListener('touchstart', e => {
     lastTouch = { x: e.touches[0].clientX, y: e.touches[0].clientY };
@@ -210,8 +205,9 @@ Promise.all([
     e.preventDefault();
     const t = e.touches[0];
     if (lastTouch) {
-      const dx = (t.clientX - lastTouch.x) / window.innerWidth  * 32.0; // 좌우 감도 2배
-      const dy = (t.clientY - lastTouch.y) / window.innerHeight * 16.0;
+      // 터치 감도를 낮춤 (32.0 -> 8.0 / 16.0 -> 4.0)
+      const dx = (t.clientX - lastTouch.x) / window.innerWidth  * 8.0; 
+      const dy = (t.clientY - lastTouch.y) / window.innerHeight * 4.0;
       target.set(
         THREE.MathUtils.clamp(target.x + dx, 0, 1),
         THREE.MathUtils.clamp(target.y - dy, 0, 1)
@@ -221,16 +217,14 @@ Promise.all([
     hint.classList.add('hidden');
   }, { passive: false });
 
-  // 자이로 (iOS는 버튼 탭으로 권한 요청 필요)
   const gyroBtn = document.getElementById('gyro-btn');
-  let gyroActive = false;
 
   function onGyro(e) {
     if (e.gamma == null) return;
-    // 좌우(gamma) 더 민감하게, 상하(beta) 는 현재 유지
+    // 자이로 감도를 낮춤 (분모를 키워 각도 범위를 확장: 5 -> 20 / 7.5 -> 30)
     target.set(
-      THREE.MathUtils.clamp((e.gamma + 2.5) / 5, 0, 1),   // 좌우 ±2.5도
-      THREE.MathUtils.clamp((e.beta  + 3.75) / 7.5, 0, 1) // 상하 ±3.75도
+      THREE.MathUtils.clamp((e.gamma + 10) / 20, 0, 1),   
+      THREE.MathUtils.clamp((e.beta  + 15) / 30, 0, 1) 
     );
     hint.classList.add('hidden');
   }
@@ -238,50 +232,38 @@ Promise.all([
   function enableGyro() {
     if (typeof DeviceOrientationEvent !== 'undefined' &&
         typeof DeviceOrientationEvent.requestPermission === 'function') {
-      // iOS 13+ 권한 요청
       DeviceOrientationEvent.requestPermission()
         .then(state => {
           if (state === 'granted') {
             window.addEventListener('deviceorientation', onGyro);
             gyroBtn.textContent = '✅ 기울기 활성화됨';
             setTimeout(() => gyroBtn.classList.add('hidden'), 1500);
-            gyroActive = true;
-          } else {
-            gyroBtn.textContent = '❌ 권한이 거부됐어요';
-            setTimeout(() => gyroBtn.classList.add('hidden'), 2000);
           }
-        }).catch(() => {
-          gyroBtn.textContent = '❌ 오류가 발생했어요';
-          setTimeout(() => gyroBtn.classList.add('hidden'), 2000);
         });
     } else {
-      // Android / 구버전 - 권한 불필요
       window.addEventListener('deviceorientation', onGyro);
       gyroBtn.classList.add('hidden');
-      gyroActive = true;
     }
   }
 
   gyroBtn.addEventListener('click', enableGyro);
 
-  // Android는 버튼 없이 자동 활성화
   if (typeof DeviceOrientationEvent !== 'undefined' &&
       typeof DeviceOrientationEvent.requestPermission !== 'function') {
     window.addEventListener('deviceorientation', onGyro);
     gyroBtn.classList.add('hidden');
   }
 
-  // 렌더 루프
   (function tick() {
     requestAnimationFrame(tick);
-    current.lerp(target, 0.06);
+    // lerp 수치를 0.06에서 0.04로 낮춰 더 묵직하고 부드럽게 따라오도록 수정
+    current.lerp(target, 0.04); 
     mat.uniforms.uMouse.value.copy(current);
     renderer.render(scene, camera);
   })();
 
 }).catch(err => {
   console.error('Load error:', err);
-  document.getElementById('loading').textContent = 'Error: ' + err.message;
 });
 </script>
 </body>
