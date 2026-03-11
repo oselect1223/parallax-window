@@ -133,7 +133,7 @@ Promise.all([
       uTex:      { value: mainTex  },
       uDepth:    { value: depthTex },
       uMouse:    { value: new THREE.Vector2(0.5, 0.5) },
-      uStrength: { value: 0.05 } // 0.1에서 0.05로 시차 강도 감소
+      uStrength: { value: 0.05 } // 시차 강도 (낮을수록 부드러움)
     },
     vertexShader: `
       varying vec2 vUv;
@@ -205,7 +205,6 @@ Promise.all([
     e.preventDefault();
     const t = e.touches[0];
     if (lastTouch) {
-      // 터치 감도를 낮춤 (32.0 -> 8.0 / 16.0 -> 4.0)
       const dx = (t.clientX - lastTouch.x) / window.innerWidth  * 8.0; 
       const dy = (t.clientY - lastTouch.y) / window.innerHeight * 4.0;
       target.set(
@@ -220,11 +219,20 @@ Promise.all([
   const gyroBtn = document.getElementById('gyro-btn');
 
   function onGyro(e) {
-    if (e.gamma == null) return;
-    // 자이로 감도를 낮춤 (분모를 키워 각도 범위를 확장: 5 -> 20 / 7.5 -> 30)
+    if (e.gamma == null || e.beta == null) return;
+
+    // 스마트폰을 쥐고 세워서 보는 각도 기준 (약 70도)
+    const baseBeta = 70; 
+
+    // 좌우(gamma)는 정면(0도) 기준 ±15도 조작
+    let x = (e.gamma + 15) / 30; 
+    
+    // 상하(beta)는 세운 각도(70도) 기준 ±20도 조작
+    let y = (e.beta - baseBeta + 20) / 40;
+
     target.set(
-      THREE.MathUtils.clamp((e.gamma + 10) / 20, 0, 1),   
-      THREE.MathUtils.clamp((e.beta  + 15) / 30, 0, 1) 
+      THREE.MathUtils.clamp(x, 0, 1),
+      THREE.MathUtils.clamp(y, 0, 1) 
     );
     hint.classList.add('hidden');
   }
@@ -256,7 +264,6 @@ Promise.all([
 
   (function tick() {
     requestAnimationFrame(tick);
-    // lerp 수치를 0.06에서 0.04로 낮춰 더 묵직하고 부드럽게 따라오도록 수정
     current.lerp(target, 0.04); 
     mat.uniforms.uMouse.value.copy(current);
     renderer.render(scene, camera);
